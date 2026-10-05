@@ -19,6 +19,10 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Serve Frontend Static Files
+const path = require('path');
+app.use(express.static(path.join(__dirname, '../frontend')));
+
 // Mount Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/complaints', complaintRoutes);
