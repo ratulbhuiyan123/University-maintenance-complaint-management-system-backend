@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  STUDENT
+  ADMIN
+  STAFF
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum Status {
+  PENDING
+  ASSIGNED
+  IN_PROGRESS
+  RESOLVED
+  REJECTED
+}
+
+model User {
+  UserID             Int         @id @default(autoincrement())
+  Name               String
+  Email              String      @unique
+  Password           String
+  Role               Role        @default(STUDENT)
+  Phone              String?
+  complaints         Complaint[] @relation("StudentComplaints")
+  assignedComplaints Complaint[] @relation("StaffComplaints")
+  statusLogs         StatusLog[]
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+}
+
+model Building {
+  BuildingID Int      @id @default(autoincrement())
+  Name       String
+  rooms      Room[]
+  createdAt  DateTime @default(now())
+}
+
+model Room {
+  RoomID     Int         @id @default(autoincrement())
+  BuildingID Int
+  building   Building    @relation(fields: [BuildingID], references: [BuildingID], onDelete: Cascade)
+  RoomNumber String
+  complaints Complaint[]
+}
+
+model Category {
+  CategoryID      Int         @id @default(autoincrement())
+  Name            String      @unique
+  DefaultPriority Priority    @default(MEDIUM)
+  complaints      Complaint[]
+}
+
+model Complaint {
+  ComplaintID     Int         @id @default(autoincrement())
+  StudentID       Int
+  student         User        @relation("StudentComplaints", fields: [StudentID], references: [UserID], onDelete: Cascade)
+  RoomID          Int
+  room            Room        @relation(fields: [RoomID], references: [RoomID], onDelete: Cascade)
+  CategoryID      Int
+  category        Category    @relation(fields: [CategoryID], references: [CategoryID], onDelete: Restrict)
+  AssignedStaffID Int?
+  assignedStaff   User?       @relation("StaffComplaints", fields: [AssignedStaffID], references: [UserID], onDelete: SetNull)
+  Description     String
+  PhotoURL        String?
+  Status          Status      @default(PENDING)
+  Priority        Priority    @default(MEDIUM)
+  CreatedAt       DateTime    @default(now())
+  ResolvedAt      DateTime?
+  statusLogs      StatusLog[]
+}
+
+model StatusLog {
+  LogID           Int       @id @default(autoincrement())
+  ComplaintID     Int
+  complaint       Complaint @relation(fields: [ComplaintID], references: [ComplaintID], onDelete: Cascade)
+  UpdatedByUserID Int
+  updatedByUser   User      @relation(fields: [UpdatedByUserID], references: [UserID], onDelete: Cascade)
+  Status          Status
+  Note            String?
+  Timestamp       DateTime  @default(now())
+}
