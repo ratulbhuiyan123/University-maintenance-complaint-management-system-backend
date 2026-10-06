@@ -18,15 +18,20 @@ app.get('/api/health', (req, res) => {
     message: 'University Maintenance API is running'
   });
 });
-
+ 
 // Serve Frontend Static Files
 const path = require('path');
 app.use(express.static(path.join(__dirname, '../frontend')));
 
+app.get('/', (req, res) => {
+  res.status(200).json({
+    status: 'success',
+    message: 'University Maintenance API is running'
+  });
+});
 // Mount Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/complaints', complaintRoutes);
-app.use('/api', complaintRoutes);
 
 // Unhandled Routes (Express 5 compatible)
 app.use((req, res, next) => {
