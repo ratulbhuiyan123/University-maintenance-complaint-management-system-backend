@@ -1,17 +1,27 @@
 const complaintService = require('./complaint.service');
 
-// ====================== STUDENT CONTROLLER ======================
+// ====================== METADATA ======================
+const getMetadata = async (req, res, next) => {
+  try {
+    const data = await complaintService.getMetadata();
+    res.status(200).json({
+      status: 'success',
+      data
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
+// ====================== STUDENT CONTROLLER ======================
 const createComplaint = async (req, res, next) => {
   try {
     const studentId = req.user.UserID;
-    const complaint = await complaintService.createComplaint(studentId, req.body);
+    const result = await complaintService.createComplaint(studentId, req.body);
 
     res.status(201).json({
       status: 'success',
-      data: {
-        complaint
-      }
+      data: result.complaints ? result : { complaint: result }
     });
   } catch (error) {
     next(error);
@@ -26,9 +36,44 @@ const getMyComplaints = async (req, res, next) => {
     res.status(200).json({
       status: 'success',
       results: complaints.length,
-      data: {
-        complaints
-      }
+      data: { complaints }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getComplaintById = async (req, res, next) => {
+  try {
+    const complaint = await complaintService.getComplaintById(req.params.id, req.user);
+    res.status(200).json({
+      status: 'success',
+      data: { complaint }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updateComplaint = async (req, res, next) => {
+  try {
+    const updated = await complaintService.updateComplaint(req.params.id, req.user, req.body);
+    res.status(200).json({
+      status: 'success',
+      message: 'Complaint updated successfully.',
+      data: { complaint: updated }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const deleteComplaint = async (req, res, next) => {
+  try {
+    const result = await complaintService.deleteComplaint(req.params.id, req.user);
+    res.status(200).json({
+      status: 'success',
+      message: result.message
     });
   } catch (error) {
     next(error);
@@ -36,17 +81,13 @@ const getMyComplaints = async (req, res, next) => {
 };
 
 // ====================== ADMIN CONTROLLER ======================
-
 const getAllComplaints = async (req, res, next) => {
   try {
     const complaints = await complaintService.getAllComplaints(req.query);
-
     res.status(200).json({
       status: 'success',
       results: complaints.length,
-      data: {
-        complaints
-      }
+      data: { complaints }
     });
   } catch (error) {
     next(error);
@@ -67,9 +108,7 @@ const assignComplaint = async (req, res, next) => {
 
     res.status(200).json({
       status: 'success',
-      data: {
-        complaint: updatedComplaint
-      }
+      data: { complaint: updatedComplaint }
     });
   } catch (error) {
     next(error);
@@ -77,18 +116,14 @@ const assignComplaint = async (req, res, next) => {
 };
 
 // ====================== STAFF CONTROLLER ======================
-
 const getStaffComplaints = async (req, res, next) => {
   try {
     const staffId = req.user.UserID;
     const complaints = await complaintService.getStaffComplaints(staffId);
-
     res.status(200).json({
       status: 'success',
       results: complaints.length,
-      data: {
-        complaints
-      }
+      data: { complaints }
     });
   } catch (error) {
     next(error);
@@ -99,14 +134,10 @@ const updateComplaintStatus = async (req, res, next) => {
   try {
     const { id } = req.params;
     const staffId = req.user.UserID;
-
     const updatedComplaint = await complaintService.updateComplaintStatus(id, staffId, req.body);
-
     res.status(200).json({
       status: 'success',
-      data: {
-        complaint: updatedComplaint
-      }
+      data: { complaint: updatedComplaint }
     });
   } catch (error) {
     next(error);
@@ -114,8 +145,12 @@ const updateComplaintStatus = async (req, res, next) => {
 };
 
 module.exports = {
+  getMetadata,
   createComplaint,
   getMyComplaints,
+  getComplaintById,
+  updateComplaint,
+  deleteComplaint,
   getAllComplaints,
   assignComplaint,
   getStaffComplaints,

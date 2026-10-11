@@ -4,7 +4,10 @@ const { protect, restrictTo } = require('../../middlewares/auth.middleware');
 
 const router = express.Router();
 
-// Require login for all routes
+// Public / Protected Metadata Route
+router.get('/meta', protect, complaintController.getMetadata);
+
+// All complaint actions require authentication
 router.use(protect);
 
 // ====================== STUDENT ROUTES ======================
@@ -18,5 +21,11 @@ router.put(['/admin/:id/assign', '/admin/complaints/:id/assign'], restrictTo('AD
 // ====================== STAFF ROUTES ======================
 router.get(['/staff', '/staff/complaints'], restrictTo('STAFF'), complaintController.getStaffComplaints);
 router.put(['/staff/:id/status', '/staff/complaints/:id/status'], restrictTo('STAFF'), complaintController.updateComplaintStatus);
+
+// ====================== SINGLE COMPLAINT CRUD ======================
+router.route('/:id')
+  .get(complaintController.getComplaintById)
+  .put(complaintController.updateComplaint)
+  .delete(complaintController.deleteComplaint);
 
 module.exports = router;
