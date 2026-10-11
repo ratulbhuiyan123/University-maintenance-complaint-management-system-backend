@@ -3,7 +3,10 @@ const AppError = require('../../utils/AppError');
 
 // ====================== METADATA (ROOMS & CATEGORIES) ======================
 
+let isSeedDataChecked = false;
+
 const ensureSeedData = async () => {
+  if (isSeedDataChecked) return;
   try {
     const bCount = await prisma.building.count();
     const rCount = await prisma.room.count();
@@ -105,6 +108,7 @@ const ensureSeedData = async () => {
         }).catch(() => {});
       }
     }
+    isSeedDataChecked = true;
   } catch (err) {
     console.error('Seed verification notice:', err.message);
   }
@@ -146,75 +150,67 @@ const createComplaint = async (studentId, data) => {
   if (Array.isArray(items) && items.length > 0) {
     const createdComplaints = [];
 
+    // Pre-fetch all categories and valid room IDs in parallel for instant in-memory lookup
+    const [allCategories, allRooms] = await Promise.all([
+      prisma.category.findMany(),
+      prisma.room.findMany({ select: { RoomID: true } })
+    ]);
+
+    const categoryMap = new Map(allCategories.map(c => [c.CategoryID, c]));
+    const defaultCategory = allCategories[0] || null;
+    const validRoomIds = new Set(allRooms.map(r => r.RoomID));
+    const defaultRoomId = allRooms.length > 0 ? allRooms[0].RoomID : null;
+
+    const recordsToInsert = [];
+
     // Pre-validate all items
     for (const [index, item] of items.entries()) {
       let roomId = Number(item.roomId || item.RoomID);
-      const catIds = item.categoryIds || item.categories || (item.CategoryID ? [item.CategoryID] : []);
-
+      if (!roomId || !validRoomIds.has(roomId)) {
+        roomId = defaultRoomId;
+      }
       if (!roomId) {
-        // Fallback to first available room if not specified
-        const firstRoom = await prisma.room.findFirst();
-        if (firstRoom) roomId = firstRoom.RoomID;
-        else throw new AppError(`Location #${index + 1}: Room selection is required.`, 400);
+        throw new AppError(`Location #${index + 1}: Room selection is required.`, 400);
       }
 
+      const catIds = item.categoryIds || item.categories || (item.CategoryID ? [item.CategoryID] : []);
       if (!Array.isArray(catIds) || catIds.length === 0) {
         throw new AppError(`Location #${index + 1}: At least one category must be selected.`, 400);
       }
 
-      let room = await prisma.room.findUnique({ where: { RoomID: roomId } });
-      if (!room) {
-        // Fallback to first available room if ID does not exist in DB
-        const fallbackRoom = await prisma.room.findFirst();
-        if (fallbackRoom) {
-          roomId = fallbackRoom.RoomID;
-          item.roomId = fallbackRoom.RoomID;
-        } else {
-          throw new AppError(`Location #${index + 1}: Room ID ${roomId} does not exist.`, 404);
+      const priority = (item.priority || item.Priority || data.priority || 'MEDIUM').toUpperCase();
+      const itemDesc = item.description || item.Description || data.generalDescription || data.Description || 'No description provided';
+      const photoUrl = item.photoUrl || item.PhotoURL || data.photoUrl || data.PhotoURL || null;
+
+      for (const catId of catIds) {
+        const category = categoryMap.get(Number(catId)) || defaultCategory;
+        if (!category) {
+          throw new AppError(`Category ID ${catId} not found.`, 404);
         }
+
+        recordsToInsert.push({
+          StudentID: studentId,
+          RoomID: roomId,
+          CategoryID: category.CategoryID,
+          Description: itemDesc,
+          PhotoURL: photoUrl,
+          Priority: priority,
+          Status: 'PENDING'
+        });
       }
     }
 
-    // Process all complaints in a transaction
-    await prisma.$transaction(async (tx) => {
-      for (const item of items) {
-        let roomId = Number(item.roomId || item.RoomID);
-        const catIds = item.categoryIds || item.categories || (item.CategoryID ? [item.CategoryID] : []);
-        const priority = item.priority || item.Priority || 'MEDIUM';
-        const itemDesc = item.description || item.Description || data.generalDescription || data.Description || 'No description provided';
-        const photoUrl = item.photoUrl || item.PhotoURL || data.photoUrl || data.PhotoURL || null;
-
-        for (const catId of catIds) {
-          let category = await tx.category.findUnique({
-            where: { CategoryID: Number(catId) }
-          });
-          if (!category) {
-            category = await tx.category.findFirst();
-            if (!category) {
-              throw new AppError(`Category ID ${catId} not found.`, 404);
-            }
-          }
-
-          const created = await tx.complaint.create({
-            data: {
-              StudentID: studentId,
-              RoomID: roomId,
-              CategoryID: category.CategoryID,
-              Description: itemDesc,
-              PhotoURL: photoUrl,
-              Priority: priority.toUpperCase(),
-              Status: 'PENDING'
-            },
-            include: {
-              category: true,
-              room: { include: { building: true } }
-            }
-          });
-
-          createdComplaints.push(created);
+    // Process all complaints directly without interactive transaction timeouts
+    for (const record of recordsToInsert) {
+      const created = await prisma.complaint.create({
+        data: record,
+        include: {
+          category: true,
+          room: { include: { building: true } }
         }
-      }
-    });
+      });
+      createdComplaints.push(created);
+    }
 
     return {
       message: `Successfully created ${createdComplaints.length} complaint report(s) across ${items.length} location(s).`,
