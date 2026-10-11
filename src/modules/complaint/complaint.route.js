@@ -4,15 +4,20 @@ const { protect, restrictTo } = require('../../middlewares/auth.middleware');
 
 const router = express.Router();
 
-// Public / Protected Metadata Route
-router.get('/meta', protect, complaintController.getMetadata);
+// Public Metadata Route (Rooms & Categories)
+router.get('/meta', complaintController.getMetadata);
 
-// All complaint actions require authentication
+// All complaint actions below require authentication
 router.use(protect);
 
-// ====================== STUDENT ROUTES ======================
-router.post(['/', '/complaints'], restrictTo('STUDENT'), complaintController.createComplaint);
-router.get(['/my-complaints', '/complaints/my-complaints'], restrictTo('STUDENT'), complaintController.getMyComplaints);
+// Unified complaints endpoint (auto-filtered by role)
+router.get(['/', '/complaints'], complaintController.getComplaints);
+
+// Report maintenance issue (Accessible to STUDENTS, ADMINS, & STAFF)
+router.post(['/', '/complaints'], complaintController.createComplaint);
+
+// Student Complaints
+router.get(['/my-complaints', '/complaints/my-complaints'], complaintController.getMyComplaints);
 
 // ====================== ADMIN ROUTES ======================
 router.get(['/admin', '/admin/complaints'], restrictTo('ADMIN'), complaintController.getAllComplaints);

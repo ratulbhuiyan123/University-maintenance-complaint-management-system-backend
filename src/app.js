@@ -13,9 +13,10 @@ app.use(express.json());
  
 // Serve Frontend Static Files
 const path = require('path');
-app.use(express.static(path.join(__dirname, '../frontend')));
+const frontendPath = path.join(__dirname, '../../frontend');
+app.use(express.static(frontendPath));
 
-app.get('/', (req, res) => {
+app.get('/api/health', (req, res) => {
   res.status(200).json({
     status: 'success',
     message: 'University Maintenance API is running......////'

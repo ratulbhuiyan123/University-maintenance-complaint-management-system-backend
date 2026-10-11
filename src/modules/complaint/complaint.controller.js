@@ -144,6 +144,28 @@ const updateComplaintStatus = async (req, res, next) => {
   }
 };
 
+// ====================== UNIFIED COMPLAINTS HANDLER ======================
+const getComplaints = async (req, res, next) => {
+  try {
+    const role = (req.user.Role || '').toUpperCase();
+    let complaints;
+    if (role === 'ADMIN') {
+      complaints = await complaintService.getAllComplaints(req.query);
+    } else if (role === 'STAFF') {
+      complaints = await complaintService.getStaffComplaints(req.user.UserID);
+    } else {
+      complaints = await complaintService.getMyComplaints(req.user.UserID);
+    }
+    res.status(200).json({
+      status: 'success',
+      results: complaints.length,
+      data: { complaints }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getMetadata,
   createComplaint,
@@ -154,5 +176,6 @@ module.exports = {
   getAllComplaints,
   assignComplaint,
   getStaffComplaints,
-  updateComplaintStatus
+  updateComplaintStatus,
+  getComplaints
 };
