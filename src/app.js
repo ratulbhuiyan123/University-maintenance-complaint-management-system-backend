@@ -16,6 +16,18 @@ const path = require('path');
 const frontendPath = path.join(__dirname, '../../frontend');
 app.use(express.static(frontendPath));
 
+app.get('/', (req, res) => {
+  res.status(200).json({
+    status: 'success',
+    message: 'CampusCare University Maintenance API is running live on Vercel!',
+    endpoints: {
+      health: '/api/health',
+      auth: '/api/auth',
+      complaints: '/api/complaints'
+    }
+  });
+});
+
 app.get('/api/health', (req, res) => {
   res.status(200).json({
     status: 'success',
