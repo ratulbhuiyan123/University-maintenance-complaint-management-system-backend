@@ -98,11 +98,10 @@ const assignComplaint = async (req, res, next) => {
   try {
     const { id } = req.params;
     const adminId = req.user.UserID;
-    const { assignedStaffId, AssignedStaffID, priority, Priority, note } = req.body;
+    const { assignedStaffId, AssignedStaffID, note } = req.body;
 
     const updatedComplaint = await complaintService.assignComplaint(id, adminId, {
       assignedStaffId: assignedStaffId || AssignedStaffID,
-      priority: priority || Priority,
       note
     });
 
@@ -133,8 +132,7 @@ const getStaffComplaints = async (req, res, next) => {
 const updateComplaintStatus = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const staffId = req.user.UserID;
-    const updatedComplaint = await complaintService.updateComplaintStatus(id, staffId, req.body);
+    const updatedComplaint = await complaintService.updateComplaintStatus(id, req.user, req.body);
     res.status(200).json({
       status: 'success',
       data: { complaint: updatedComplaint }
@@ -166,6 +164,19 @@ const getComplaints = async (req, res, next) => {
   }
 };
 
+const getStaffList = async (req, res, next) => {
+  try {
+    const staff = await complaintService.getStaffList();
+    res.status(200).json({
+      status: 'success',
+      results: staff.length,
+      data: { staff }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getMetadata,
   createComplaint,
@@ -177,5 +188,6 @@ module.exports = {
   assignComplaint,
   getStaffComplaints,
   updateComplaintStatus,
-  getComplaints
+  getComplaints,
+  getStaffList
 };

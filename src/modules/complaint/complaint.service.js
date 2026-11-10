@@ -209,6 +209,17 @@ const createComplaint = async (studentId, data) => {
           room: { include: { building: true } }
         }
       });
+
+      // Create initial StatusLog entry
+      await prisma.statusLog.create({
+        data: {
+          ComplaintID: created.ComplaintID,
+          UpdatedByUserID: studentId,
+          Status: 'PENDING',
+          Note: 'Ticket submitted via campus portal.'
+        }
+      }).catch(() => {});
+
       createdComplaints.push(created);
     }
 
@@ -278,6 +289,16 @@ const createComplaint = async (studentId, data) => {
     }
   });
 
+  // Create initial StatusLog entry
+  await prisma.statusLog.create({
+    data: {
+      ComplaintID: newComplaint.ComplaintID,
+      UpdatedByUserID: studentId,
+      Status: 'PENDING',
+      Note: 'Ticket submitted via campus portal.'
+    }
+  }).catch(() => {});
+
   return newComplaint;
 };
 
@@ -285,6 +306,9 @@ const getMyComplaints = async (studentId) => {
   const complaints = await prisma.complaint.findMany({
     where: { StudentID: studentId },
     include: {
+      student: {
+        select: { UserID: true, Name: true, Email: true, Phone: true }
+      },
       category: true,
       room: {
         include: { building: true }
@@ -298,6 +322,11 @@ const getMyComplaints = async (studentId) => {
         }
       },
       statusLogs: {
+        include: {
+          updatedByUser: {
+            select: { UserID: true, Name: true, Email: true, Role: true }
+          }
+        },
         orderBy: { Timestamp: 'desc' }
       }
     },
@@ -320,6 +349,11 @@ const getComplaintById = async (complaintId, user) => {
         select: { UserID: true, Name: true, Email: true, Phone: true }
       },
       statusLogs: {
+        include: {
+          updatedByUser: {
+            select: { UserID: true, Name: true, Email: true, Role: true }
+          }
+        },
         orderBy: { Timestamp: 'desc' }
       }
     }
@@ -347,13 +381,12 @@ const updateComplaint = async (complaintId, user, data) => {
     throw new AppError('Complaint not found.', 404);
   }
 
-  if (user.Role === 'STUDENT') {
-    if (complaint.StudentID !== user.UserID) {
-      throw new AppError('You can only edit your own complaints.', 403);
-    }
-    if (complaint.Status !== 'PENDING') {
-      throw new AppError('Cannot edit complaint after it has been reviewed or assigned.', 400);
-    }
+  // Complainant Ownership Rule: Only the student who reported this issue can edit its details, and ONLY while PENDING
+  if (complaint.StudentID !== user.UserID) {
+    throw new AppError('Only the student who reported this issue can edit its details.', 403);
+  }
+  if (complaint.Status !== 'PENDING') {
+    throw new AppError('Cannot edit complaint after it has been reviewed or assigned.', 400);
   }
 
   const updateData = {};
@@ -431,6 +464,11 @@ const getAllComplaints = async (filters = {}) => {
         select: { UserID: true, Name: true, Email: true, Phone: true }
       },
       statusLogs: {
+        include: {
+          updatedByUser: {
+            select: { UserID: true, Name: true, Email: true, Role: true }
+          }
+        },
         orderBy: { Timestamp: 'desc' }
       }
     },
@@ -441,7 +479,7 @@ const getAllComplaints = async (filters = {}) => {
 };
 
 const assignComplaint = async (complaintId, adminId, data) => {
-  const { assignedStaffId, priority, note } = data;
+  const { assignedStaffId, note } = data;
 
   if (!assignedStaffId) {
     throw new AppError('assignedStaffId is required.', 400);
@@ -461,14 +499,11 @@ const assignComplaint = async (complaintId, adminId, data) => {
     throw new AppError('Assigned user must exist and have the STAFF role.', 400);
   }
 
+  // Complainant Ownership: Admin sets status & assigned staff, but NEVER alters complainant's reported priority
   const updateData = {
     AssignedStaffID: Number(assignedStaffId),
     Status: 'ASSIGNED'
   };
-
-  if (priority) {
-    updateData.Priority = priority.toUpperCase();
-  }
 
   const updatedComplaint = await prisma.$transaction(async (tx) => {
     const updated = await tx.complaint.update({
@@ -509,7 +544,15 @@ const getStaffComplaints = async (staffId) => {
       },
       category: true,
       room: { include: { building: true } },
+      assignedStaff: {
+        select: { UserID: true, Name: true, Email: true, Phone: true }
+      },
       statusLogs: {
+        include: {
+          updatedByUser: {
+            select: { UserID: true, Name: true, Email: true, Role: true }
+          }
+        },
         orderBy: { Timestamp: 'desc' }
       }
     },
@@ -519,8 +562,29 @@ const getStaffComplaints = async (staffId) => {
   return complaints;
 };
 
-const updateComplaintStatus = async (complaintId, staffId, data) => {
-  const { status, Status, note, Note } = data;
+const getStaffList = async () => {
+  const staff = await prisma.user.findMany({
+    where: { Role: 'STAFF' },
+    select: {
+      UserID: true,
+      Name: true,
+      Email: true,
+      Phone: true
+    },
+    orderBy: { Name: 'asc' }
+  });
+  return staff;
+};
+
+const updateComplaintStatus = async (complaintId, userOrId, data) => {
+  let user = typeof userOrId === 'object' && userOrId !== null ? userOrId : null;
+  if (!user && (typeof userOrId === 'number' || typeof userOrId === 'string')) {
+    user = await prisma.user.findUnique({ where: { UserID: Number(userOrId) } });
+  }
+  const userId = user ? user.UserID : Number(userOrId);
+  const userRole = user ? (user.Role || '').toUpperCase() : 'STAFF';
+
+  const { status, Status, note, Note, assignedStaffId } = data;
   const statusToUpdate = (status || Status || '').toUpperCase();
 
   if (!statusToUpdate) {
@@ -533,20 +597,33 @@ const updateComplaintStatus = async (complaintId, staffId, data) => {
   }
 
   const complaint = await prisma.complaint.findUnique({
-    where: { ComplaintID: Number(complaintId) }
+    where: { ComplaintID: Number(complaintId) },
+    include: { assignedStaff: true }
   });
 
   if (!complaint) {
     throw new AppError('Complaint not found with the provided ID.', 404);
   }
 
-  if (complaint.AssignedStaffID !== staffId) {
-    throw new AppError('You are not authorized to update this complaint as it is not assigned to you.', 403);
+  if (userRole === 'STAFF') {
+    if (complaint.AssignedStaffID !== userId) {
+      throw new AppError('You are not authorized to update this complaint as it is not assigned to you.', 403);
+    }
   }
 
   const updatePayload = { Status: statusToUpdate };
   if (statusToUpdate === 'RESOLVED') {
     updatePayload.ResolvedAt = new Date();
+  }
+
+  // Complainant Ownership: Admin can dispatch technician and update status, but NEVER alters student's reported priority
+  if (userRole === 'ADMIN') {
+    if (assignedStaffId !== undefined) {
+      updatePayload.AssignedStaffID = assignedStaffId ? Number(assignedStaffId) : null;
+      if (assignedStaffId && statusToUpdate === 'PENDING') {
+        updatePayload.Status = 'ASSIGNED';
+      }
+    }
   }
 
   const updatedComplaint = await prisma.$transaction(async (tx) => {
@@ -555,19 +632,21 @@ const updateComplaintStatus = async (complaintId, staffId, data) => {
       data: updatePayload,
       include: {
         category: true,
-        room: true,
-        statusLogs: {
-          orderBy: { Timestamp: 'desc' }
-        }
+        room: { include: { building: true } },
+        student: { select: { UserID: true, Name: true, Email: true, Phone: true } },
+        assignedStaff: { select: { UserID: true, Name: true, Email: true, Phone: true } }
       }
     });
+
+    const actorName = user ? user.Name : (userRole === 'ADMIN' ? 'Admin' : 'Maintenance Staff');
+    const logNote = note || Note || `Status updated to ${statusToUpdate} by ${actorName}.`;
 
     await tx.statusLog.create({
       data: {
         ComplaintID: Number(complaintId),
-        UpdatedByUserID: staffId,
+        UpdatedByUserID: userId,
         Status: statusToUpdate,
-        Note: note || Note || `Status updated to ${statusToUpdate} by maintenance staff.`
+        Note: logNote
       }
     });
 
@@ -587,5 +666,6 @@ module.exports = {
   getAllComplaints,
   assignComplaint,
   getStaffComplaints,
-  updateComplaintStatus
+  updateComplaintStatus,
+  getStaffList
 };

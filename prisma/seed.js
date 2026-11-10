@@ -178,7 +178,7 @@ async function main() {
   const hashedPassword = await bcrypt.hash('password123', 12);
 
   // Admin
-  await prisma.user.upsert({
+  const adminUser = await prisma.user.upsert({
     where: { Email: 'admin@campus.edu' },
     update: { Password: hashedPassword },
     create: {
@@ -190,8 +190,8 @@ async function main() {
     }
   });
 
-  // Staff
-  await prisma.user.upsert({
+  // Staff Technicians
+  const staffKarim = await prisma.user.upsert({
     where: { Email: 'staff@campus.edu' },
     update: { Password: hashedPassword },
     create: {
@@ -203,8 +203,32 @@ async function main() {
     }
   });
 
+  const staffRafiq = await prisma.user.upsert({
+    where: { Email: 'electrician@campus.edu' },
+    update: { Password: hashedPassword },
+    create: {
+      Name: 'Rafiq (Senior Electrical Technician)',
+      Email: 'electrician@campus.edu',
+      Password: hashedPassword,
+      Role: 'STAFF',
+      Phone: '01700000004'
+    }
+  });
+
+  const staffSalam = await prisma.user.upsert({
+    where: { Email: 'plumber@campus.edu' },
+    update: { Password: hashedPassword },
+    create: {
+      Name: 'Salam (HVAC & Plumbing Specialist)',
+      Email: 'plumber@campus.edu',
+      Password: hashedPassword,
+      Role: 'STAFF',
+      Phone: '01700000005'
+    }
+  });
+
   // Student
-  await prisma.user.upsert({
+  const studentUser = await prisma.user.upsert({
     where: { Email: 'student@campus.edu' },
     update: { Password: hashedPassword },
     create: {
@@ -216,7 +240,155 @@ async function main() {
     }
   });
 
-  console.log('✅ University database seeded with 7 floors (70+ rooms) & complete maintenance categories!');
+  // 5. CREATE SAMPLE WORKFLOW COMPLAINTS (CP-3 LIFECYCLE DEMO)
+  const complaintCount = await prisma.complaint.count();
+  if (complaintCount < 4) {
+    console.log('Seeding demo lifecycle complaints with audit timeline...');
+    const catElectrical = await prisma.category.findFirst({ where: { Name: { contains: 'Electrical' } } });
+    const catHvac = await prisma.category.findFirst({ where: { Name: { contains: 'HVAC' } } });
+    const catAv = await prisma.category.findFirst({ where: { Name: { contains: 'Multimedia' } } });
+    const catPlumbing = await prisma.category.findFirst({ where: { Name: { contains: 'Plumbing' } } });
+
+    // Ticket 1: PENDING
+    const ticket1 = await prisma.complaint.create({
+      data: {
+        StudentID: studentUser.UserID,
+        RoomID: 201,
+        CategoryID: catElectrical ? catElectrical.CategoryID : 1,
+        Description: 'Ceiling Fan #2 in Computer Programming Lab 1 has loose mounting bolts causing heavy noise and vibration.',
+        Priority: 'HIGH',
+        Status: 'PENDING',
+        PhotoURL: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80'
+      }
+    });
+    await prisma.statusLog.create({
+      data: {
+        ComplaintID: ticket1.ComplaintID,
+        UpdatedByUserID: studentUser.UserID,
+        Status: 'PENDING',
+        Note: 'Complaint reported by Student Representative. Awaiting department review.'
+      }
+    });
+
+    // Ticket 2: ASSIGNED
+    const ticket2 = await prisma.complaint.create({
+      data: {
+        StudentID: studentUser.UserID,
+        RoomID: 304,
+        CategoryID: catHvac ? catHvac.CategoryID : 2,
+        AssignedStaffID: staffKarim.UserID,
+        Description: 'Split AC 2 ton unit in AI & Machine Learning Lab is leaking cold condensation water over desktop row 4.',
+        Priority: 'URGENT',
+        Status: 'ASSIGNED',
+        PhotoURL: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80'
+      }
+    });
+    await prisma.statusLog.createMany({
+      data: [
+        {
+          ComplaintID: ticket2.ComplaintID,
+          UpdatedByUserID: studentUser.UserID,
+          Status: 'PENDING',
+          Note: 'Initial report filed by student.',
+          Timestamp: new Date(Date.now() - 3600000 * 5)
+        },
+        {
+          ComplaintID: ticket2.ComplaintID,
+          UpdatedByUserID: adminUser.UserID,
+          Status: 'ASSIGNED',
+          Note: 'Dispatched to Karim (Head of Campus Maintenance). Priority escalated to URGENT due to water near electrical equipment.',
+          Timestamp: new Date(Date.now() - 3600000 * 2)
+        }
+      ]
+    });
+
+    // Ticket 3: IN_PROGRESS
+    const ticket3 = await prisma.complaint.create({
+      data: {
+        StudentID: studentUser.UserID,
+        RoomID: 101,
+        CategoryID: catAv ? catAv.CategoryID : 4,
+        AssignedStaffID: staffRafiq.UserID,
+        Description: 'Overhead Optoma projector in Ground Floor Lecture Hall 1A has a burnt bulb and flashing amber error LED.',
+        Priority: 'HIGH',
+        Status: 'IN_PROGRESS',
+        PhotoURL: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&w=600&q=80'
+      }
+    });
+    await prisma.statusLog.createMany({
+      data: [
+        {
+          ComplaintID: ticket3.ComplaintID,
+          UpdatedByUserID: studentUser.UserID,
+          Status: 'PENDING',
+          Note: 'Report submitted by student.',
+          Timestamp: new Date(Date.now() - 3600000 * 8)
+        },
+        {
+          ComplaintID: ticket3.ComplaintID,
+          UpdatedByUserID: adminUser.UserID,
+          Status: 'ASSIGNED',
+          Note: 'Assigned to Rafiq for projector diagnostics.',
+          Timestamp: new Date(Date.now() - 3600000 * 4)
+        },
+        {
+          ComplaintID: ticket3.ComplaintID,
+          UpdatedByUserID: staffRafiq.UserID,
+          Status: 'IN_PROGRESS',
+          Note: 'Technician on-site. Removed old lamp cartridge. Replacement OEM bulb requisitioned from store room.',
+          Timestamp: new Date(Date.now() - 3600000 * 1)
+        }
+      ]
+    });
+
+    // Ticket 4: RESOLVED
+    const ticket4 = await prisma.complaint.create({
+      data: {
+        StudentID: studentUser.UserID,
+        RoomID: 105,
+        CategoryID: catPlumbing ? catPlumbing.CategoryID : 5,
+        AssignedStaffID: staffSalam.UserID,
+        Description: 'Washroom tap in Medical & First Aid Center had a broken washer resulting in continuous high-pressure tap leak.',
+        Priority: 'MEDIUM',
+        Status: 'RESOLVED',
+        ResolvedAt: new Date(Date.now() - 3600000 * 3)
+      }
+    });
+    await prisma.statusLog.createMany({
+      data: [
+        {
+          ComplaintID: ticket4.ComplaintID,
+          UpdatedByUserID: studentUser.UserID,
+          Status: 'PENDING',
+          Note: 'Student reported water leakage.',
+          Timestamp: new Date(Date.now() - 3600000 * 24)
+        },
+        {
+          ComplaintID: ticket4.ComplaintID,
+          UpdatedByUserID: adminUser.UserID,
+          Status: 'ASSIGNED',
+          Note: 'Assigned to Salam (Sanitary Lead).',
+          Timestamp: new Date(Date.now() - 3600000 * 18)
+        },
+        {
+          ComplaintID: ticket4.ComplaintID,
+          UpdatedByUserID: staffSalam.UserID,
+          Status: 'IN_PROGRESS',
+          Note: 'Turned off main riser valve. Replacing brass tap spindle and washer.',
+          Timestamp: new Date(Date.now() - 3600000 * 6)
+        },
+        {
+          ComplaintID: ticket4.ComplaintID,
+          UpdatedByUserID: staffSalam.UserID,
+          Status: 'RESOLVED',
+          Note: 'Installation complete and pressure tested with no leaks. Area cleaned and sanitized.',
+          Timestamp: new Date(Date.now() - 3600000 * 3)
+        }
+      ]
+    });
+  }
+
+  console.log('✅ University database seeded with 7 floors (70+ rooms), multi-role users & complete maintenance lifecycle!');
 }
 
 main()

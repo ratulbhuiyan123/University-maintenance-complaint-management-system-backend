@@ -21,11 +21,14 @@ router.get(['/my-complaints', '/complaints/my-complaints'], complaintController.
 
 // ====================== ADMIN ROUTES ======================
 router.get(['/admin', '/admin/complaints'], restrictTo('ADMIN'), complaintController.getAllComplaints);
+router.get(['/staff-list', '/admin/staff-list'], restrictTo('ADMIN'), complaintController.getStaffList);
 router.put(['/admin/:id/assign', '/admin/complaints/:id/assign'], restrictTo('ADMIN'), complaintController.assignComplaint);
+router.put(['/admin/:id/status', '/admin/complaints/:id/status'], restrictTo('ADMIN'), complaintController.updateComplaintStatus);
 
-// ====================== STAFF ROUTES ======================
+// ====================== STAFF & ADMIN STATUS ROUTE ======================
 router.get(['/staff', '/staff/complaints'], restrictTo('STAFF'), complaintController.getStaffComplaints);
 router.put(['/staff/:id/status', '/staff/complaints/:id/status'], restrictTo('STAFF'), complaintController.updateComplaintStatus);
+router.put(['/:id/status', '/complaints/:id/status'], restrictTo('ADMIN', 'STAFF'), complaintController.updateComplaintStatus);
 
 // ====================== SINGLE COMPLAINT CRUD ======================
 router.route('/:id')
